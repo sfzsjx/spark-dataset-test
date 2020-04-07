@@ -4,9 +4,7 @@ package com.gree.bdc;
 import com.gree.bdc.entity.OrderArriveTime;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.PairFunction;
-import org.apache.spark.api.java.function.VoidFunction;
+import org.apache.spark.api.java.function.*;
 import org.apache.spark.sql.*;
 import scala.Tuple2;
 
@@ -55,11 +53,47 @@ public class DispatchDetailsInfo {
                 Arrays.asList(orderArriveTime1, orderArriveTime2, orderArriveTime3, orderArriveTime4),
                 personEncoder
         );
+        javaBeanDS.show();
+
+        Dataset<OrderArriveTime> orderArriveTimeDataSet = javaBeanDS.groupByKey(new MapFunction<OrderArriveTime, String>() {
+            @Override
+            public String call(OrderArriveTime orderArriveTime) throws Exception {
+                return orderArriveTime.getCustomerAddress();
+            }
+        }, Encoders.STRING()).flatMapGroups(new FlatMapGroupsFunction<String, OrderArriveTime, OrderArriveTime>() {
+            @Override
+            public Iterator<OrderArriveTime> call(String s, Iterator<OrderArriveTime> iterator) throws Exception {
+
+                String arriveTime = "";
+                String finishTime = "";
+
+                List<OrderArriveTime> orderArriveTimeList = new ArrayList<>();
+                while (iterator.hasNext()) {
+                    OrderArriveTime orderArriveTime = new OrderArriveTime();
+                    OrderArriveTime next = iterator.next();
+                    if (arriveTime.equals("")) {
+                        arriveTime = next.getArriveTime();
+                    } else {
+                        arriveTime = finishTime;
+                    }
+                    finishTime = next.getFinishTime();
+                    orderArriveTime.setOrderNumber(next.getOrderNumber());
+                    orderArriveTime.setCustomerAddress(next.getCustomerAddress());
+                    orderArriveTime.setArriveTime(arriveTime);
+                    orderArriveTime.setFinishTime(finishTime);
+                    System.out.println(orderArriveTime);
+                    orderArriveTimeList.add(orderArriveTime);
+                }
+
+                return orderArriveTimeList.iterator();
+            }
+        }, Encoders.bean(OrderArriveTime.class));
+        orderArriveTimeDataSet.show();
 
         //需要实现的逻辑为：
         //根据客户地址进行分组，然后根据完成时间排序，完成时间为第一的则到达时间为现有到达时间加三分钟，
         //完成时间第二的到达时间为第一的完成时间加三分钟，以此类推得到每个订单的真实到达时间
-        JavaRDD<OrderArriveTime> orderArriveTimeJavaRDD = javaBeanDS.javaRDD();
+          //JavaRDD<OrderArriveTime> orderArriveTimeJavaRDD = javaBeanDS.javaRDD();
 
 //        JavaRDD<Object> map = orderArriveTimeJavaRDD.groupBy(OrderArriveTime::getCustomerAddress)
 //                .map(new Function<Tuple2<String, Iterable<OrderArriveTime>>, Object>() {
